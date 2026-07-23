@@ -6,11 +6,10 @@ databases:
 services:
   - type: web
     name: virata-hrms-backend
-    runtime: node
+    runtime: docker
     plan: free
-    rootDir: backend
-    buildCommand: npm install --include=dev && npm run build
-    startCommand: npx prisma migrate deploy && npx prisma db seed && npm run start:prod
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     healthCheckPath: /api/docs
     envVars:
       - key: NODE_ENV
