@@ -1,0 +1,625 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  MANAGER
+  FINANCE
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_NOTICE
+  EXITED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  PROCESSED
+  PAID
+}
+
+enum AdHocPayType {
+  BONUS
+  INCENTIVE
+  DEDUCTION
+  LOAN_EMI
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum ExpenseClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REIMBURSED
+}
+
+enum PerformanceCycleStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ReviewType {
+  SELF
+  MANAGER
+}
+
+enum JobPostingStatus {
+  OPEN
+  CLOSED
+  ON_HOLD
+}
+
+enum CandidateStage {
+  APPLIED
+  SCREENING
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+enum InterviewMode {
+  ONSITE
+  VIDEO
+  PHONE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  role              Role      @default(EMPLOYEE)
+  isActive          Boolean   @default(true)
+  refreshTokenHash  String?
+  employee          Employee? @relation(fields: [employeeId], references: [id])
+  employeeId        String?   @unique
+  notifications     Notification[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Department {
+  id           String       @id @default(uuid())
+  name         String       @unique
+  parent       Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  parentId     String?
+  children     Department[] @relation("DepartmentHierarchy")
+  designations Designation[]
+  employees    Employee[]
+  jobPostings  JobPosting[]
+  createdAt    DateTime     @default(now())
+
+  @@map("departments")
+}
+
+model Designation {
+  id           String     @id @default(uuid())
+  title        String
+  department   Department @relation(fields: [departmentId], references: [id])
+  departmentId String
+  employees    Employee[]
+  jobPostings          JobPosting[]
+  offers               Offer[]
+  promotionsFrom       PromotionRecord[] @relation("PreviousDesignation")
+  promotionsTo         PromotionRecord[] @relation("NewDesignation")
+  createdAt    DateTime   @default(now())
+
+  @@unique([title, departmentId])
+  @@map("designations")
+}
+
+model Employee {
+  id             String         @id @default(uuid())
+  employeeCode   String         @unique
+  firstName      String
+  lastName       String
+  personalEmail  String?
+  phone          String?
+  department     Department     @relation(fields: [departmentId], references: [id])
+  departmentId   String
+  designation    Designation    @relation(fields: [designationId], references: [id])
+  designationId  String
+  manager        Employee?      @relation("EmployeeManager", fields: [managerId], references: [id])
+  managerId      String?
+  reports        Employee[]     @relation("EmployeeManager")
+  user           User?
+  dateOfJoining  DateTime
+  dateOfExit     DateTime?
+  status         EmployeeStatus @default(ACTIVE)
+  shift          Shift?         @relation(fields: [shiftId], references: [id])
+  shiftId        String?
+  attendance     AttendanceRecord[]
+  leaveAllocations    LeaveAllocation[]
+  leaveRequests       LeaveRequest[]      @relation("LeaveRequestEmployee")
+  approvedLeaves      LeaveRequest[]      @relation("LeaveRequestApprover")
+  compOffCredits      CompOffCredit[]
+  bankDetail          BankDetail?
+  salaryStructures    SalaryStructure[]
+  payslips            Payslip[]
+  adHocPayComponents  AdHocPayComponent[]
+  expenseClaims       ExpenseClaim[]      @relation("ExpenseClaimEmployee")
+  approvedExpenses    ExpenseClaim[]      @relation("ExpenseClaimApprover")
+  goals               Goal[]
+  reviewsReceived     PerformanceReview[] @relation("RevieweeReviews")
+  reviewsGiven        PerformanceReview[] @relation("ReviewerReviews")
+  promotions          PromotionRecord[]
+  interviewsConducted Interview[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@map("employees")
+}
+
+model GeoFenceLocation {
+  id            String   @id @default(uuid())
+  name          String
+  latitude      Float
+  longitude     Float
+  radiusMeters  Int      @default(200)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@map("geofence_locations")
+}
+
+model Shift {
+  id                  String     @id @default(uuid())
+  name                String     @unique
+  startTime           String     // "09:30" 24h local time
+  endTime              String     // "18:30" 24h local time
+  gracePeriodMinutes  Int        @default(10)
+  isNightShift        Boolean    @default(false)
+  employees           Employee[]
+  createdAt           DateTime   @default(now())
+
+  @@map("shifts")
+}
+
+model AttendanceRecord {
+  id              String            @id @default(uuid())
+  employee        Employee          @relation(fields: [employeeId], references: [id])
+  employeeId      String
+  date            DateTime          @db.Date
+  checkInAt       DateTime?
+  checkInLat      Float?
+  checkInLng      Float?
+  checkInWithinGeofence Boolean?
+  checkOutAt      DateTime?
+  checkOutLat     Float?
+  checkOutLng     Float?
+  checkOutWithinGeofence Boolean?
+  status          AttendanceStatus  @default(PRESENT)
+  breaks          Break[]
+  correctionNote  String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([employeeId, date])
+  @@map("attendance_records")
+}
+
+// Atomic counters used for sequential code generation (e.g. employee codes per year).
+model Counter {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("counters")
+}
+
+model Break {
+  id                  String           @id @default(uuid())
+  attendanceRecord    AttendanceRecord @relation(fields: [attendanceRecordId], references: [id])
+  attendanceRecordId  String
+  startAt             DateTime
+  endAt               DateTime?
+
+  @@map("breaks")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Leave Management
+// ---------------------------------------------------------------------------
+
+model LeaveType {
+  id                   String            @id @default(uuid())
+  name                 String            @unique
+  defaultAnnualDays    Float             @default(0)
+  carryForwardAllowed  Boolean           @default(false)
+  maxCarryForwardDays  Float             @default(0)
+  isPaid               Boolean           @default(true)
+  allocations          LeaveAllocation[]
+  requests             LeaveRequest[]
+  createdAt            DateTime          @default(now())
+
+  @@map("leave_types")
+}
+
+model LeaveAllocation {
+  id                 String    @id @default(uuid())
+  employee           Employee  @relation(fields: [employeeId], references: [id])
+  employeeId         String
+  leaveType          LeaveType @relation(fields: [leaveTypeId], references: [id])
+  leaveTypeId        String
+  year               Int
+  allocatedDays      Float
+  carriedForwardDays Float     @default(0)
+  createdAt          DateTime  @default(now())
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@map("leave_allocations")
+}
+
+model LeaveRequest {
+  id             String             @id @default(uuid())
+  employee       Employee           @relation("LeaveRequestEmployee", fields: [employeeId], references: [id])
+  employeeId     String
+  leaveType      LeaveType          @relation(fields: [leaveTypeId], references: [id])
+  leaveTypeId    String
+  startDate      DateTime           @db.Date
+  endDate        DateTime           @db.Date
+  isHalfDay      Boolean            @default(false)
+  dayCount       Float
+  reason         String
+  status         LeaveRequestStatus @default(PENDING)
+  approver       Employee?          @relation("LeaveRequestApprover", fields: [approverId], references: [id])
+  approverId     String?
+  decisionNote   String?
+  decidedAt      DateTime?
+  usedCompOffId  String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@map("leave_requests")
+}
+
+model Holiday {
+  id         String   @id @default(uuid())
+  name       String
+  date       DateTime @db.Date
+  isOptional Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@unique([date, name])
+  @@map("holidays")
+}
+
+model CompOffCredit {
+  id                String    @id @default(uuid())
+  employee          Employee  @relation(fields: [employeeId], references: [id])
+  employeeId        String
+  earnedForDate     DateTime  @db.Date
+  expiresAt         DateTime
+  isUsed            Boolean   @default(false)
+  usedInRequestId   String?
+  createdAt         DateTime  @default(now())
+
+  @@map("comp_off_credits")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Payroll
+// ---------------------------------------------------------------------------
+
+model BankDetail {
+  id                 String   @id @default(uuid())
+  employee           Employee @relation(fields: [employeeId], references: [id])
+  employeeId         String   @unique
+  accountHolderName  String
+  accountNumber      String
+  ifscCode           String
+  bankName           String
+  updatedAt          DateTime @updatedAt
+
+  @@map("bank_details")
+}
+
+model SalaryStructure {
+  id                String   @id @default(uuid())
+  employee          Employee @relation(fields: [employeeId], references: [id])
+  employeeId        String
+  effectiveFrom     DateTime @db.Date
+  basic             Float
+  hra               Float
+  specialAllowance  Float    @default(0)
+  createdAt         DateTime @default(now())
+
+  @@map("salary_structures")
+}
+
+model PayrollRun {
+  id           String           @id @default(uuid())
+  month        Int
+  year         Int
+  status       PayrollRunStatus @default(DRAFT)
+  processedAt  DateTime?
+  payslips     Payslip[]
+  createdAt    DateTime         @default(now())
+
+  @@unique([month, year])
+  @@map("payroll_runs")
+}
+
+model AdHocPayComponent {
+  id            String       @id @default(uuid())
+  employee      Employee     @relation(fields: [employeeId], references: [id])
+  employeeId    String
+  payrollRunId  String?
+  type          AdHocPayType
+  amount        Float
+  description   String?
+  applied       Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  @@map("ad_hoc_pay_components")
+}
+
+model Payslip {
+  id                String     @id @default(uuid())
+  payrollRun        PayrollRun @relation(fields: [payrollRunId], references: [id])
+  payrollRunId      String
+  employee          Employee   @relation(fields: [employeeId], references: [id])
+  employeeId        String
+  basic             Float
+  hra               Float
+  specialAllowance  Float      @default(0)
+  overtimePay       Float      @default(0)
+  bonusIncentive    Float      @default(0)
+  grossEarnings     Float
+  providentFund     Float
+  esi               Float
+  professionalTax   Float
+  tds               Float
+  otherDeductions   Float      @default(0)
+  netPay            Float
+  workingDays       Int
+  paidDays          Float
+  generatedAt       DateTime   @default(now())
+
+  @@unique([payrollRunId, employeeId])
+  @@map("payslips")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Notifications
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Expense & Reimbursement
+// ---------------------------------------------------------------------------
+
+model ExpenseClaim {
+  id            String             @id @default(uuid())
+  employee      Employee           @relation("ExpenseClaimEmployee", fields: [employeeId], references: [id])
+  employeeId    String
+  category      String
+  amount        Float
+  description   String?
+  expenseDate   DateTime           @db.Date
+  status        ExpenseClaimStatus @default(PENDING)
+  approver      Employee?          @relation("ExpenseClaimApprover", fields: [approverId], references: [id])
+  approverId    String?
+  decisionNote  String?
+  decidedAt     DateTime?
+  reimbursedAt  DateTime?
+  receipts      ExpenseReceipt[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@map("expense_claims")
+}
+
+model ExpenseReceipt {
+  id              String       @id @default(uuid())
+  expenseClaim    ExpenseClaim @relation(fields: [expenseClaimId], references: [id])
+  expenseClaimId  String
+  // Reference to the uploaded file in object storage (e.g. a Supabase Storage
+  // path/URL). This API does not handle the upload itself — see README.
+  fileUrl         String
+  uploadedAt      DateTime     @default(now())
+
+  @@map("expense_receipts")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Performance Management
+// ---------------------------------------------------------------------------
+
+model PerformanceCycle {
+  id          String                 @id @default(uuid())
+  name        String                 @unique
+  startDate   DateTime               @db.Date
+  endDate     DateTime               @db.Date
+  status      PerformanceCycleStatus @default(DRAFT)
+  goals       Goal[]
+  reviews     PerformanceReview[]
+  promotions  PromotionRecord[]
+  createdAt   DateTime               @default(now())
+
+  @@map("performance_cycles")
+}
+
+model Goal {
+  id             String            @id @default(uuid())
+  employee       Employee          @relation(fields: [employeeId], references: [id])
+  employeeId     String
+  cycle          PerformanceCycle  @relation(fields: [cycleId], references: [id])
+  cycleId        String
+  title          String
+  description    String?
+  weightPercent  Float             @default(0)
+  targetValue    Float?
+  achievedValue  Float?
+  metricUnit     String?
+  status         GoalStatus        @default(NOT_STARTED)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@map("goals")
+}
+
+model PerformanceReview {
+  id            String           @id @default(uuid())
+  cycle         PerformanceCycle @relation(fields: [cycleId], references: [id])
+  cycleId       String
+  employee      Employee         @relation("RevieweeReviews", fields: [employeeId], references: [id])
+  employeeId    String
+  reviewer      Employee         @relation("ReviewerReviews", fields: [reviewerId], references: [id])
+  reviewerId    String
+  type          ReviewType
+  rating        Float
+  strengths     String?
+  improvements  String?
+  submittedAt   DateTime         @default(now())
+
+  @@unique([cycleId, employeeId, reviewerId, type])
+  @@map("performance_reviews")
+}
+
+model PromotionRecord {
+  id                      String            @id @default(uuid())
+  employee                Employee          @relation(fields: [employeeId], references: [id])
+  employeeId              String
+  cycle                   PerformanceCycle? @relation(fields: [cycleId], references: [id])
+  cycleId                 String?
+  previousDesignation     Designation       @relation("PreviousDesignation", fields: [previousDesignationId], references: [id])
+  previousDesignationId   String
+  newDesignation          Designation       @relation("NewDesignation", fields: [newDesignationId], references: [id])
+  newDesignationId        String
+  effectiveDate           DateTime          @db.Date
+  note                    String?
+  createdAt               DateTime          @default(now())
+
+  @@map("promotion_records")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Recruitment
+// ---------------------------------------------------------------------------
+
+model JobPosting {
+  id             String           @id @default(uuid())
+  title          String
+  department     Department       @relation(fields: [departmentId], references: [id])
+  departmentId   String
+  designation    Designation?     @relation(fields: [designationId], references: [id])
+  designationId  String?
+  description    String
+  status         JobPostingStatus @default(OPEN)
+  postedAt       DateTime         @default(now())
+  closedAt       DateTime?
+  candidates     Candidate[]
+
+  @@map("job_postings")
+}
+
+model Candidate {
+  id             String         @id @default(uuid())
+  jobPosting     JobPosting     @relation(fields: [jobPostingId], references: [id])
+  jobPostingId   String
+  fullName       String
+  email          String
+  phone          String?
+  resumeUrl      String?
+  appliedAt      DateTime       @default(now())
+  stage          CandidateStage @default(APPLIED)
+  interviews     Interview[]
+  offer          Offer?
+
+  @@map("candidates")
+}
+
+model Interview {
+  id              String           @id @default(uuid())
+  candidate       Candidate        @relation(fields: [candidateId], references: [id])
+  candidateId     String
+  scheduledAt     DateTime
+  interviewer     Employee         @relation(fields: [interviewerId], references: [id])
+  interviewerId   String
+  mode            InterviewMode
+  status          InterviewStatus  @default(SCHEDULED)
+  feedback        String?
+  rating          Float?
+  createdAt       DateTime         @default(now())
+
+  @@map("interviews")
+}
+
+model Offer {
+  id              String      @id @default(uuid())
+  candidate       Candidate   @relation(fields: [candidateId], references: [id])
+  candidateId     String      @unique
+  designation     Designation @relation(fields: [designationId], references: [id])
+  designationId   String
+  proposedSalary  Float
+  offeredAt       DateTime    @default(now())
+  status          OfferStatus @default(DRAFT)
+  joiningDate     DateTime?
+
+  @@map("offers")
+}
+
+model Notification {
+  id         String              @id @default(uuid())
+  user       User                @relation(fields: [userId], references: [id])
+  userId     String
+  title      String
+  message    String
+  channel    NotificationChannel @default(IN_APP)
+  isRead     Boolean             @default(false)
+  createdAt  DateTime            @default(now())
+
+  @@map("notifications")
+}

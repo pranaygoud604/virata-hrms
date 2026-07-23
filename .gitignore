@@ -1,0 +1,7 @@
+# This repo only tracks frontend/ and backend/ — everything else at the
+# root (agent session data, ad-hoc QA screenshots, planning docs) stays local.
+.claude/
+/*.png
+/*.html
+/*.docx
+/*.md

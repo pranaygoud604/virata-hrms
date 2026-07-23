@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: virata
+      POSTGRES_PASSWORD: virata_dev_password
+      POSTGRES_DB: virata_hr
+    ports:
+      - "5432:5432"
+    volumes:
+      - virata_hr_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U virata -d virata_hr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  virata_hr_pgdata:
